@@ -5,5 +5,3 @@ coverage/
 .DS_Store
 README*
 docs
-scripts
-tests
