@@ -1,0 +1,79 @@
+@api = http://localhost:3000/api
+@branchToken = 1f2e3d4c-5b6a-47c8-90d1-2e3f4a5b6c71
+@triviaToken = REEMPLAZAR
+@responsePublicId = REEMPLAZAR
+@attemptPublicId = REEMPLAZAR
+
+### Estado de la API
+GET {{api}}/health
+
+### Sucursales públicas
+GET {{api}}/public/branches
+
+### Resolver sucursal por QR
+GET {{api}}/public/branches/resolve?token={{branchToken}}
+
+### Encuesta activa
+GET {{api}}/public/survey
+
+### Enviar encuesta completa
+POST {{api}}/public/survey-responses
+Content-Type: application/json
+
+{
+  "branch": { "token": "{{branchToken}}" },
+  "source": "qr",
+  "startedAt": "2026-07-17T09:00:00-06:00",
+  "privacyNoticeAccepted": true,
+  "customer": {
+    "name": "Cliente de prueba",
+    "email": "cliente@example.com",
+    "phone": "2290000000",
+    "contactConsent": true
+  },
+  "answers": {
+    "RECOMMENDATION_SCORE": 10,
+    "STAFF_ATTENTION": 10,
+    "FOUND_PRODUCT": "YES",
+    "SERVICE_TIME": "LT_2_MIN",
+    "PURCHASE_EASE": 10,
+    "SALES_ADVICE": 10,
+    "VALUE_FOR_MONEY": 9,
+    "CLEANLINESS": 10,
+    "ORDER_PRESENTATION": 10,
+    "DESIRED_PRODUCT": "Más herramientas",
+    "COMMENTS": "Excelente atención"
+  }
+}
+
+### Iniciar trivia
+POST {{api}}/public/trivia/start
+Authorization: Bearer {{triviaToken}}
+Content-Type: application/json
+
+{
+  "responsePublicId": "{{responsePublicId}}"
+}
+
+### Responder una pregunta
+POST {{api}}/public/trivia/{{attemptPublicId}}/answer
+Authorization: Bearer {{triviaToken}}
+Content-Type: application/json
+
+{
+  "questionId": 1,
+  "optionId": 1
+}
+
+### Finalizar trivia por tiempo o decisión del cliente
+POST {{api}}/public/trivia/{{attemptPublicId}}/finish
+Authorization: Bearer {{triviaToken}}
+
+### Iniciar sesión administrativa
+POST {{api}}/admin/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "REEMPLAZAR"
+}
