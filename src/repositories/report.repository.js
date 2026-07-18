@@ -1,20 +1,20 @@
-const { query } = require('../config/database');
-const { config } = require('../config/env');
+const { query } = require("../config/database");
+const { config } = require("../config/env");
 
 function buildResponseWhere(filters = {}, options = {}) {
   const conditions = ["r.status = 'completed'"];
   const params = [];
 
   if (filters.fromUtc) {
-    conditions.push('r.completed_at >= ?');
+    conditions.push("r.completed_at >= ?");
     params.push(filters.fromUtc);
   }
   if (filters.toUtc) {
-    conditions.push('r.completed_at <= ?');
+    conditions.push("r.completed_at <= ?");
     params.push(filters.toUtc);
   }
   if (filters.branchId) {
-    conditions.push('r.branch_id = ?');
+    conditions.push("r.branch_id = ?");
     params.push(filters.branchId);
   }
   if (options.search && filters.search) {
@@ -27,19 +27,19 @@ function buildResponseWhere(filters = {}, options = {}) {
     const term = `%${filters.search}%`;
     params.push(term, term, term, term);
   }
-  if (options.trivia && filters.trivia && filters.trivia !== 'all') {
+  if (options.trivia && filters.trivia && filters.trivia !== "all") {
     const triviaConditions = {
-      not_played: 'ta.id IS NULL',
-      played: 'ta.id IS NOT NULL',
-      won: 'ta.won = 1',
-      lost: "ta.id IS NOT NULL AND ta.won = 0 AND ta.status IN ('completed', 'expired')"
+      not_played: "ta.id IS NULL",
+      played: "ta.id IS NOT NULL",
+      won: "ta.won = 1",
+      lost: "ta.id IS NOT NULL AND ta.won = 0 AND ta.status IN ('completed', 'expired')",
     };
     conditions.push(triviaConditions[filters.trivia]);
   }
 
   return {
-    clause: conditions.join(' AND '),
-    params
+    clause: conditions.join(" AND "),
+    params,
   };
 }
 
@@ -81,7 +81,7 @@ async function getSummary(filters) {
           WHERE ${where.clause}
           GROUP BY r.id, r.branch_id
        ) responseMetrics`,
-    where.params
+    where.params,
   );
   return rows[0];
 }
@@ -89,17 +89,44 @@ async function getSummary(filters) {
 async function getTrend(filters) {
   const where = buildResponseWhere(filters);
   return query(
-    `SELECT DATE(CONVERT_TZ(r.completed_at, '+00:00', ?)) AS responseDate,
-            COUNT(DISTINCT r.id) AS totalResponses,
-            ROUND(AVG(CASE WHEN q.code = 'RECOMMENDATION_SCORE' THEN a.numeric_value END), 2) AS averageRecommendation,
-            ROUND(AVG(CASE WHEN q.code = 'STAFF_ATTENTION' THEN a.numeric_value END), 2) AS averageStaffAttention
-       FROM survey_responses r
-  LEFT JOIN survey_answers a ON a.response_id = r.id
-  LEFT JOIN survey_questions q ON q.id = a.question_id
-      WHERE ${where.clause}
-      GROUP BY DATE(CONVERT_TZ(r.completed_at, '+00:00', ?))
-      ORDER BY responseDate ASC`,
-    [config.reportSqlOffset, ...where.params, config.reportSqlOffset]
+    `SELECT
+       DATE(
+         CONVERT_TZ(
+           r.completed_at,
+           '+00:00',
+           ?
+         )
+       ) AS responseDate,
+       COUNT(
+         DISTINCT r.id
+       ) AS totalResponses,
+       ROUND(
+         AVG(
+           CASE
+             WHEN q.code = 'RECOMMENDATION_SCORE'
+             THEN a.numeric_value
+           END
+         ),
+         2
+       ) AS averageRecommendation,
+       ROUND(
+         AVG(
+           CASE
+             WHEN q.code = 'STAFF_ATTENTION'
+             THEN a.numeric_value
+           END
+         ),
+         2
+       ) AS averageStaffAttention
+     FROM survey_responses r
+     LEFT JOIN survey_answers a
+       ON a.response_id = r.id
+     LEFT JOIN survey_questions q
+       ON q.id = a.question_id
+     WHERE ${where.clause}
+     GROUP BY responseDate
+     ORDER BY responseDate ASC`,
+    [config.reportSqlOffset, ...where.params],
   );
 }
 
@@ -124,32 +151,50 @@ async function getBranchPerformance(filters) {
       WHERE ${where.clause}
       GROUP BY b.id, b.administrative_name, b.public_name
       ORDER BY totalResponses DESC, b.public_name ASC`,
-    where.params
+    where.params,
   );
 }
 
 async function getQuestionDistributions(filters) {
   const where = buildResponseWhere(filters);
   return query(
-    `SELECT q.id AS questionId,
-            q.code AS questionCode,
-            q.question_text AS questionText,
-            q.question_type AS questionType,
-            q.display_order AS displayOrder,
-            a.numeric_value AS numericValue,
-            o.option_code AS optionCode,
-            o.option_text AS optionText,
-            COUNT(*) AS total
-       FROM survey_responses r
-       JOIN survey_answers a ON a.response_id = r.id
-       JOIN survey_questions q ON q.id = a.question_id
-  LEFT JOIN survey_question_options o ON o.id = a.option_id
-      WHERE ${where.clause}
-        AND q.question_type IN ('rating', 'single_choice')
-      GROUP BY q.id, q.code, q.question_text, q.question_type, q.display_order,
-               a.numeric_value, o.option_code, o.option_text
-      ORDER BY q.display_order, a.numeric_value, o.display_order`,
-    where.params
+    `SELECT
+       q.id AS questionId,
+       q.code AS questionCode,
+       q.question_text AS questionText,
+       q.question_type AS questionType,
+       q.display_order AS displayOrder,
+       a.numeric_value AS numericValue,
+       o.option_code AS optionCode,
+       o.option_text AS optionText,
+       MIN(o.display_order) AS optionDisplayOrder,
+       COUNT(*) AS total
+     FROM survey_responses r
+     JOIN survey_answers a
+       ON a.response_id = r.id
+     JOIN survey_questions q
+       ON q.id = a.question_id
+     LEFT JOIN survey_question_options o
+       ON o.id = a.option_id
+     WHERE ${where.clause}
+       AND q.question_type IN (
+         'rating',
+         'single_choice'
+       )
+     GROUP BY
+       q.id,
+       q.code,
+       q.question_text,
+       q.question_type,
+       q.display_order,
+       a.numeric_value,
+       o.option_code,
+       o.option_text
+     ORDER BY
+       q.display_order,
+       a.numeric_value,
+       optionDisplayOrder`,
+    where.params,
   );
 }
 
@@ -171,7 +216,7 @@ async function getRecentOpenAnswers(filters, limit = 50) {
         AND NULLIF(TRIM(a.text_value), '') IS NOT NULL
       ORDER BY r.completed_at DESC
       LIMIT ${Number(limit)}`,
-    where.params
+    where.params,
   );
 }
 
@@ -186,7 +231,7 @@ async function getTriviaStats(filters) {
        FROM survey_responses r
   LEFT JOIN trivia_attempts ta ON ta.survey_response_id = r.id
       WHERE ${where.clause}`,
-    where.params
+    where.params,
   );
   return rows[0];
 }
@@ -198,7 +243,7 @@ async function countResponses(filters) {
        FROM survey_responses r
   LEFT JOIN trivia_attempts ta ON ta.survey_response_id = r.id
       WHERE ${where.clause}`,
-    where.params
+    where.params,
   );
   return Number(rows[0].total);
 }
@@ -232,7 +277,7 @@ async function listResponses(filters) {
       WHERE ${where.clause}
       ORDER BY r.completed_at DESC, r.id DESC
       LIMIT ${Number(filters.limit)} OFFSET ${Number(offset)}`,
-    where.params
+    where.params,
   );
 }
 
@@ -265,7 +310,7 @@ async function getResponseDetail(publicId) {
   LEFT JOIN trivia_attempts ta ON ta.survey_response_id = r.id
       WHERE r.public_id = ?
       LIMIT 1`,
-    [publicId]
+    [publicId],
   );
 
   if (responseRows.length === 0) return null;
@@ -285,7 +330,7 @@ async function getResponseDetail(publicId) {
        JOIN survey_responses r ON r.id = a.response_id
       WHERE r.public_id = ?
       ORDER BY q.display_order`,
-    [publicId]
+    [publicId],
   );
 
   return { ...responseRows[0], answers };
@@ -330,7 +375,7 @@ async function exportResponses(filters, maxRows) {
       WHERE ${where.clause}
       ORDER BY r.completed_at DESC, r.id DESC
       LIMIT ${Number(maxRows)}`,
-    where.params
+    where.params,
   );
 }
 
@@ -345,5 +390,5 @@ module.exports = {
   listResponses,
   getResponseDetail,
   countExportRows,
-  exportResponses
+  exportResponses,
 };
